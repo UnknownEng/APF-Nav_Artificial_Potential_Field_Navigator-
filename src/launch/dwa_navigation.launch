@@ -1,0 +1,5 @@
+<launch>
+    <node name="test_node" pkg="adaptive_dwa_ros" type="test_node.py" output="screen"/>
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find adaptive_dwa_ros)/rviz/dwa_viz.rviz"/>
+</launch>
+

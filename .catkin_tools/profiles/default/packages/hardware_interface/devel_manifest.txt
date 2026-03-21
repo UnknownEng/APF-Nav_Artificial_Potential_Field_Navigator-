@@ -1,0 +1,4 @@
+ros_control/hardware_interface
+/home/robo/ros_ws/devel/.private/hardware_interface/share/hardware_interface/cmake/hardware_interfaceConfig.cmake /home/robo/ros_ws/devel/share/hardware_interface/cmake/hardware_interfaceConfig.cmake
+/home/robo/ros_ws/devel/.private/hardware_interface/share/hardware_interface/cmake/hardware_interfaceConfig-version.cmake /home/robo/ros_ws/devel/share/hardware_interface/cmake/hardware_interfaceConfig-version.cmake
+/home/robo/ros_ws/devel/.private/hardware_interface/lib/pkgconfig/hardware_interface.pc /home/robo/ros_ws/devel/lib/pkgconfig/hardware_interface.pc

@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>my_room_world</name>
+  <version>0.0.1</version>
+  <description>My room world package for Gazebo</description>
+
+  <maintainer email="muaz@todo.todo">muaz</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <depend>gazebo_ros</depend>
+
+</package>

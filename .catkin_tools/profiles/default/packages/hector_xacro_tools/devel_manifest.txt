@@ -1,0 +1,4 @@
+hector_models/hector_xacro_tools
+/home/robo/ros_ws/devel/.private/hector_xacro_tools/share/hector_xacro_tools/cmake/hector_xacro_toolsConfig-version.cmake /home/robo/ros_ws/devel/share/hector_xacro_tools/cmake/hector_xacro_toolsConfig-version.cmake
+/home/robo/ros_ws/devel/.private/hector_xacro_tools/share/hector_xacro_tools/cmake/hector_xacro_toolsConfig.cmake /home/robo/ros_ws/devel/share/hector_xacro_tools/cmake/hector_xacro_toolsConfig.cmake
+/home/robo/ros_ws/devel/.private/hector_xacro_tools/lib/pkgconfig/hector_xacro_tools.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_xacro_tools.pc

@@ -1,0 +1,5 @@
+hector_quadrotor/hector_quadrotor_controller_gazebo
+/home/robo/ros_ws/devel/.private/hector_quadrotor_controller_gazebo/share/hector_quadrotor_controller_gazebo/cmake/hector_quadrotor_controller_gazeboConfig-version.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_controller_gazebo/cmake/hector_quadrotor_controller_gazeboConfig-version.cmake
+/home/robo/ros_ws/devel/.private/hector_quadrotor_controller_gazebo/share/hector_quadrotor_controller_gazebo/cmake/hector_quadrotor_controller_gazeboConfig.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_controller_gazebo/cmake/hector_quadrotor_controller_gazeboConfig.cmake
+/home/robo/ros_ws/devel/.private/hector_quadrotor_controller_gazebo/lib/libhector_quadrotor_controller_gazebo.so /home/robo/ros_ws/devel/lib/libhector_quadrotor_controller_gazebo.so
+/home/robo/ros_ws/devel/.private/hector_quadrotor_controller_gazebo/lib/pkgconfig/hector_quadrotor_controller_gazebo.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_quadrotor_controller_gazebo.pc

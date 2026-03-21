@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="dwa_controller" pkg="your_package_name" type="dwa_integrated_3d.py" output="screen">
+        <!-- Topics (match your teammates' topics) -->
+        <param name="odom_topic" value="/ground_truth/state"/>
+        <param name="waypoint_topic" value="/command/pose"/>
+        <param name="survey_topic" value="/survey_done"/>
+        <param name="pointcloud_topic" value="/rtabmap/cloud_map"/>
+        <param name="cmd_topic" value="/cmd_vel"/>
+        
+        <!-- Safety (tuned for airplane) -->
+        <param name="inflate" value="1.0"/>
+        <param name="v_max" value="0.6"/>
+        <param name="critical_clearance" value="0.8"/>
+        <param name="stop_clearance" value="0.45"/>
+    </node>
+</launch>

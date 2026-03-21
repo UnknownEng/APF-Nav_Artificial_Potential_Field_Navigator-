@@ -1,0 +1,4 @@
+dwa_rubi/dwa_rubi
+/home/robo/ros_ws/devel/.private/dwa_rubi/share/dwa_rubi/cmake/dwa_rubiConfig-version.cmake /home/robo/ros_ws/devel/share/dwa_rubi/cmake/dwa_rubiConfig-version.cmake
+/home/robo/ros_ws/devel/.private/dwa_rubi/share/dwa_rubi/cmake/dwa_rubiConfig.cmake /home/robo/ros_ws/devel/share/dwa_rubi/cmake/dwa_rubiConfig.cmake
+/home/robo/ros_ws/devel/.private/dwa_rubi/lib/pkgconfig/dwa_rubi.pc /home/robo/ros_ws/devel/lib/pkgconfig/dwa_rubi.pc

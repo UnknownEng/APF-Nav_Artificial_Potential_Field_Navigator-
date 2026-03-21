@@ -1,0 +1,6 @@
+hector_localization/hector_pose_estimation_core
+/home/robo/ros_ws/devel/.private/hector_pose_estimation_core/include/hector_pose_estimation/matrix_config.h /home/robo/ros_ws/devel/include/hector_pose_estimation/matrix_config.h
+/home/robo/ros_ws/devel/.private/hector_pose_estimation_core/share/hector_pose_estimation_core/cmake/hector_pose_estimation_coreConfig.cmake /home/robo/ros_ws/devel/share/hector_pose_estimation_core/cmake/hector_pose_estimation_coreConfig.cmake
+/home/robo/ros_ws/devel/.private/hector_pose_estimation_core/share/hector_pose_estimation_core/cmake/hector_pose_estimation_coreConfig-version.cmake /home/robo/ros_ws/devel/share/hector_pose_estimation_core/cmake/hector_pose_estimation_coreConfig-version.cmake
+/home/robo/ros_ws/devel/.private/hector_pose_estimation_core/lib/libhector_pose_estimation.so /home/robo/ros_ws/devel/lib/libhector_pose_estimation.so
+/home/robo/ros_ws/devel/.private/hector_pose_estimation_core/lib/pkgconfig/hector_pose_estimation_core.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_pose_estimation_core.pc

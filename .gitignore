@@ -1,0 +1,22 @@
+# ROS build and logs
+build/
+devel/
+install/
+log/
+
+# Ignore third-party Git packages
+src/hector_localization/
+src/hector_models/
+src/hector_quadrotor/
+src/realsense_ros_gazebo/
+src/ros_control/
+
+# Python/OS stuff
+*.pyc
+__pycache__/
+*.swp
+*.log
+
+# VSCode / environment files
+.vscode/
+.env
