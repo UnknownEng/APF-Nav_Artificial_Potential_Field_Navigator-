@@ -1,0 +1,23 @@
+<launch>
+  <!-- Gazebo room + hector quadrotor with Hokuyo UTM-30LX -->
+  <include file="$(find my_room_world)/launch/room.launch"/>
+
+  <!-- APF 3D obstacle-avoidance navigator.
+       After launch, enable motors:  rosservice call /enable_motors "{enable: true}" -->
+  <node pkg="my_room_world" type="apf_navigator.py" name="apf_navigator" output="screen">
+    <param name="start_delay"   value="8.0"/>
+    <param name="control_rate"  value="10.0"/>
+    <param name="goal_tol_xy"   value="0.6"/>
+    <param name="goal_tol_z"    value="0.4"/>
+    <param name="v_max"         value="0.3"/>
+    <param name="w_max"         value="0.8"/>
+    <param name="vz_max"        value="0.3"/>
+    <param name="vz_min"        value="-0.3"/>
+    <param name="wp_timeout"    value="120.0"/>
+    <!-- Yaw toward the direction of travel so the 270 deg lidar sees ahead. -->
+    <param name="face_travel_direction" value="true"/>
+    <!-- Lidar yaw relative to base_link is read from TF. Uncomment only if
+         test.py shows the scan really is rotated with respect to TF:
+    <param name="scan_yaw_offset" value="1.5708"/> -->
+  </node>
+</launch>

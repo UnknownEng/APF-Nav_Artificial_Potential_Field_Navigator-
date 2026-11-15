@@ -1,11 +1,11 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 import math
 import rospy
 from geometry_msgs.msg import PoseStamped, Quaternion
 from hector_uav_msgs.srv import EnableMotors
 from gazebo_msgs.srv import SpawnModel
 from geometry_msgs.msg import Pose
-from gazebo_msgs.msg import ModelStates # Useful for checking if models exist
+from std_msgs.msg import Bool
 
 def enable_motors(service_name="/enable_motors", enable=True, timeout=10.0):
     rospy.loginfo("Waiting for %s ...", service_name)
@@ -92,6 +92,9 @@ def main():
     hover_time = 5.0 # Hover time at each FOI in seconds
 
     pub = rospy.Publisher(pose_topic, PoseStamped, queue_size=1)
+    # Signals mapping_supervisor (save map) and the DWA follower (stop).
+    done_pub = rospy.Publisher(rospy.get_param("~done_topic", "/survey_done"), Bool,
+                               queue_size=1, latch=True)
     r = rospy.Rate(rate_hz)
 
     # 1. DEFINE RTL AND FOIs
@@ -180,8 +183,10 @@ def main():
         else:
             rospy.loginfo("Returned to RTL position.")
 
-    # 4. HOLD RTL POSITION INDEFINITELY
-    rospy.loginfo("Mission complete. Holding position at RTL.")
+    # 4. ANNOUNCE COMPLETION, THEN HOLD RTL POSITION INDEFINITELY
+    if not rospy.is_shutdown():
+        done_pub.publish(Bool(data=True))
+    rospy.loginfo("Mission complete. Published survey_done. Holding position at RTL.")
     while not rospy.is_shutdown():
         msg.header.stamp = rospy.Time.now()
         pub.publish(msg)

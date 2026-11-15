@@ -1,4 +1,0 @@
-my_hector_addons
-/home/robo/ros_ws/devel/.private/my_hector_addons/share/my_hector_addons/cmake/my_hector_addonsConfig.cmake /home/robo/ros_ws/devel/share/my_hector_addons/cmake/my_hector_addonsConfig.cmake
-/home/robo/ros_ws/devel/.private/my_hector_addons/share/my_hector_addons/cmake/my_hector_addonsConfig-version.cmake /home/robo/ros_ws/devel/share/my_hector_addons/cmake/my_hector_addonsConfig-version.cmake
-/home/robo/ros_ws/devel/.private/my_hector_addons/lib/pkgconfig/my_hector_addons.pc /home/robo/ros_ws/devel/lib/pkgconfig/my_hector_addons.pc

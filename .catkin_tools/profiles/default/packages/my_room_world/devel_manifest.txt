@@ -1,4 +1,0 @@
-my_room_world
-/home/robo/ros_ws/devel/.private/my_room_world/share/my_room_world/cmake/my_room_worldConfig-version.cmake /home/robo/ros_ws/devel/share/my_room_world/cmake/my_room_worldConfig-version.cmake
-/home/robo/ros_ws/devel/.private/my_room_world/share/my_room_world/cmake/my_room_worldConfig.cmake /home/robo/ros_ws/devel/share/my_room_world/cmake/my_room_worldConfig.cmake
-/home/robo/ros_ws/devel/.private/my_room_world/lib/pkgconfig/my_room_world.pc /home/robo/ros_ws/devel/lib/pkgconfig/my_room_world.pc

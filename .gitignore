@@ -3,6 +3,9 @@ build/
 devel/
 install/
 log/
+logs/
+.catkin_tools/
+*:Zone.Identifier
 
 # Ignore third-party Git packages
 src/hector_localization/

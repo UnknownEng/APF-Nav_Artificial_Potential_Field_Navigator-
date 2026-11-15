@@ -1,0 +1,29 @@
+# Third-party packages this workspace was built against. The original repo
+# committed these as git submodule pointers without a .gitmodules file, so a
+# fresh clone got empty folders. Commits below are the exact pinned ones and
+# were verified to exist upstream.
+#
+# Import into src/ with vcstool:
+#   sudo apt install python3-vcstool
+#   vcs import src < dependencies.repos
+repositories:
+  hector_localization:
+    type: git
+    url: https://github.com/tu-darmstadt-ros-pkg/hector_localization.git
+    version: c2c3df188bd41127d28da7a4824f0a0e117dedaa
+  hector_models:
+    type: git
+    url: https://github.com/tu-darmstadt-ros-pkg/hector_models.git
+    version: 42e1f0d246cc8df84fa8a66335641e71d10052c3
+  hector_quadrotor:
+    type: git
+    url: https://github.com/tu-darmstadt-ros-pkg/hector_quadrotor.git
+    version: 9ba44416b905f123b271d9ed64d5a4f0df433df0
+  realsense_ros_gazebo:
+    type: git
+    url: https://github.com/nilseuropa/realsense_ros_gazebo.git
+    version: f3656354c737f421a8fad91bd26b5a7cbb8ddb80
+  ros_control:
+    type: git
+    url: https://github.com/ros-controls/ros_control.git
+    version: 633c3746a9b109056658b862ff7d765cc85ec9da

@@ -1,4 +1,0 @@
-hector_models/hector_sensors_description
-/home/robo/ros_ws/devel/.private/hector_sensors_description/share/hector_sensors_description/cmake/hector_sensors_descriptionConfig.cmake /home/robo/ros_ws/devel/share/hector_sensors_description/cmake/hector_sensors_descriptionConfig.cmake
-/home/robo/ros_ws/devel/.private/hector_sensors_description/share/hector_sensors_description/cmake/hector_sensors_descriptionConfig-version.cmake /home/robo/ros_ws/devel/share/hector_sensors_description/cmake/hector_sensors_descriptionConfig-version.cmake
-/home/robo/ros_ws/devel/.private/hector_sensors_description/lib/pkgconfig/hector_sensors_description.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_sensors_description.pc

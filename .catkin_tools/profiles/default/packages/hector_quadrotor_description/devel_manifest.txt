@@ -1,4 +1,0 @@
-hector_quadrotor/hector_quadrotor_description
-/home/robo/ros_ws/devel/.private/hector_quadrotor_description/share/hector_quadrotor_description/cmake/hector_quadrotor_descriptionConfig-version.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_description/cmake/hector_quadrotor_descriptionConfig-version.cmake
-/home/robo/ros_ws/devel/.private/hector_quadrotor_description/share/hector_quadrotor_description/cmake/hector_quadrotor_descriptionConfig.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_description/cmake/hector_quadrotor_descriptionConfig.cmake
-/home/robo/ros_ws/devel/.private/hector_quadrotor_description/lib/pkgconfig/hector_quadrotor_description.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_quadrotor_description.pc

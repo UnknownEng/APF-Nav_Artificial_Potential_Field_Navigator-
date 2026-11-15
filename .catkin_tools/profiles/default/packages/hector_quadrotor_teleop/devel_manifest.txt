@@ -1,5 +1,0 @@
-hector_quadrotor/hector_quadrotor_teleop
-/home/robo/ros_ws/devel/.private/hector_quadrotor_teleop/share/hector_quadrotor_teleop/cmake/hector_quadrotor_teleopConfig.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_teleop/cmake/hector_quadrotor_teleopConfig.cmake
-/home/robo/ros_ws/devel/.private/hector_quadrotor_teleop/share/hector_quadrotor_teleop/cmake/hector_quadrotor_teleopConfig-version.cmake /home/robo/ros_ws/devel/share/hector_quadrotor_teleop/cmake/hector_quadrotor_teleopConfig-version.cmake
-/home/robo/ros_ws/devel/.private/hector_quadrotor_teleop/lib/hector_quadrotor_teleop/quadrotor_teleop /home/robo/ros_ws/devel/lib/hector_quadrotor_teleop/quadrotor_teleop
-/home/robo/ros_ws/devel/.private/hector_quadrotor_teleop/lib/pkgconfig/hector_quadrotor_teleop.pc /home/robo/ros_ws/devel/lib/pkgconfig/hector_quadrotor_teleop.pc

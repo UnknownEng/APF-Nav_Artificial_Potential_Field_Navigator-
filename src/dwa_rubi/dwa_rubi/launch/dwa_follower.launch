@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!--
+  3D DWA waypoint follower.
+
+  waypoint_topic must NOT be /command/pose: the hector position controller
+  follows that topic, so a DWA fed from it would fight the position controller.
+  Point your waypoint source at /dwa/goal instead, e.g.
+    rosrun my_room_world lawnmower_pose.py _pose_topic:=/dwa/goal
+-->
+<launch>
+  <arg name="odom_topic"       default="/ground_truth/state"/>
+  <arg name="waypoint_topic"   default="/dwa/goal"/>
+  <arg name="pointcloud_topic" default="/rtabmap/cloud_map"/>
+  <arg name="cmd_topic"        default="/cmd_vel"/>
+
+  <node name="dwa_follower" pkg="dwa_rubi" type="obstacle_avoidance.py" output="screen">
+    <param name="odom_topic"       value="$(arg odom_topic)"/>
+    <param name="waypoint_topic"   value="$(arg waypoint_topic)"/>
+    <param name="survey_topic"     value="/survey_done"/>
+    <param name="pointcloud_topic" value="$(arg pointcloud_topic)"/>
+    <param name="cmd_topic"        value="$(arg cmd_topic)"/>
+
+    <param name="inflate"            value="1.0"/>
+    <param name="v_max"              value="0.6"/>
+    <param name="critical_clearance" value="0.8"/>
+    <param name="stop_clearance"     value="0.45"/>
+  </node>
+</launch>
