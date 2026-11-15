@@ -4,6 +4,14 @@ Hector quadrotor flying waypoints through a 30 x 30 m hangar-style room
 (`my_room_world/worlds/room_6x6.world`), using a 270 deg Hokuyo UTM-30LX lidar
 and Gazebo ground-truth pose.
 
+## Demo
+
+[![APF mission: top view and chase cam](docs/media/apf_mission.gif)](docs/media/apf_mission.mp4)
+
+Full APF mission in Gazebo: all 10 waypoints reached with no collisions,
+including the escape around the two touching boxes. The GIF runs at 16x real
+time; click it for the [MP4](docs/media/apf_mission.mp4) at 4x.
+
 ## Packages
 
 | Package | Contents |
@@ -24,14 +32,29 @@ catkin build   # or catkin_make
 source devel/setup.bash
 ```
 
+### Windows (WSL2)
+
+ROS Noetic needs Ubuntu 20.04. On Windows 11, install it as a WSL distro
+(`wsl --install -d Ubuntu-20.04`), install `ros-noetic-desktop-full`, then
+follow the steps above inside it. WSLg shows the Gazebo window on the Windows
+desktop. Add the ROS and workspace `source` lines to `~/.bashrc` so every new
+terminal is ready.
+
 ## Run
 
-APF navigator:
+APF navigator (terminal 1 starts Gazebo, terminal 2 starts the mission):
 
 ```bash
 roslaunch my_room_world apf_navigation.launch
-rosservice call /enable_motors "{enable: true}"
 ```
+
+```bash
+rosservice call /enable_motors "enable: true"
+```
+
+The drone takes off and flies all waypoints on its own (about 6.5 min of
+simulated time). Add `gui:=false` to the launch to run without the Gazebo
+window.
 
 Rule-based navigator: `roslaunch my_room_world room.launch`, then
 `rosrun my_room_world dwa_inspection.py`.
