@@ -1,6 +1,10 @@
 <launch>
+  <arg name="gui" default="true"/>
+
   <!-- Gazebo room + hector quadrotor with Hokuyo UTM-30LX -->
-  <include file="$(find my_room_world)/launch/room.launch"/>
+  <include file="$(find my_room_world)/launch/room.launch">
+    <arg name="gui" value="$(arg gui)"/>
+  </include>
 
   <!-- APF 3D obstacle-avoidance navigator.
        After launch, enable motors:  rosservice call /enable_motors "{enable: true}" -->
@@ -14,10 +18,11 @@
     <param name="vz_max"        value="0.3"/>
     <param name="vz_min"        value="-0.3"/>
     <param name="wp_timeout"    value="120.0"/>
-    <!-- Yaw toward the direction of travel so the 270 deg lidar sees ahead. -->
-    <param name="face_travel_direction" value="true"/>
-    <!-- Lidar yaw relative to base_link is read from TF. Uncomment only if
-         test.py shows the scan really is rotated with respect to TF:
-    <param name="scan_yaw_offset" value="1.5708"/> -->
+    <!-- Face the current waypoint so the 270 deg lidar looks where the drone
+         is mostly going (goal | travel | fixed). -->
+    <param name="heading_mode" value="goal"/>
+    <!-- The lidar mount (upside down on the hector quadrotor) is read from TF.
+         scan_yaw_offset overrides it for an UPRIGHT lidar only:
+    <param name="scan_yaw_offset" value="0.0"/> -->
   </node>
 </launch>

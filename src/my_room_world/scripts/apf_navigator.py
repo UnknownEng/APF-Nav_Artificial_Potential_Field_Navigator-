@@ -16,15 +16,18 @@ Fixes over the previous version:
 3. Dynamic gain tuning is bounded relative to the configured gains, so the
    configured repulsion gain is the one that is used; attraction gain is reset
    for every new waypoint.
-4. The drone yaws to face its direction of travel, and horizontal speed is cut
-   whenever it would move into the lidar's blind sector.
-5. Lidar mounting yaw comes from TF (or ~scan_yaw_offset), and scan points are
-   projected with full roll/pitch/yaw so floor hits while tilted are dropped.
+4. The drone yaws to face the current waypoint, scan points are remembered for
+   a few seconds, and it only creeps (0.1 m/s) toward the lidar's blind sector.
+5. The lidar's full mount transform comes from TF. The hector Hokuyo is mounted
+   upside down (roll = pi), which mirrors the scan left/right; ignoring that
+   placed every obstacle on the wrong side. Points are then projected with the
+   full body attitude so floor hits while tilted are dropped.
 6. Escape picks the clearer side, near-goal repulsion never drops below a
    floor, stale scans make the drone hover, and a waypoint is skipped (and
    reported) after repeated escapes or a timeout instead of looping forever.
 """
 
+import collections
 import threading
 
 import numpy as np
@@ -42,6 +45,11 @@ ROOM_HALF_SIZE = 15.0
 # Wall repulsion kicks in when drone gets within this distance of boundary
 WALL_INFLUENCE = 5.0
 WALL_GAIN      = 16.0
+# The floor needs a much shorter reach: with the wall values it pushed up
+# hard enough at 2.5 m to cancel the altitude controller, so the drone never
+# got within goal_tol_z of 2 m waypoints.
+FLOOR_INFLUENCE = 1.0
+FLOOR_GAIN      = 4.0
 
 
 def wrap_to_pi(a):
@@ -61,7 +69,11 @@ def quat_to_rot(q):
 class APFParams:
     def __init__(self):
         self.attraction_gain       = rospy.get_param('~attraction_gain', 0.6)
-        self.repulsion_gain        = rospy.get_param('~repulsion_gain', 15.0)
+        # Open-space repulsion gain. Repulsion is summed over every lidar hit
+        # within repulsion_distance (~20 hits from a flat face), so small gains
+        # are already strong. The previous nominal 15.0 was never actually used
+        # (tuning clamped it into 1..3); 1..3 is the range that flew well.
+        self.repulsion_gain        = rospy.get_param('~repulsion_gain', 1.0)
         self.base_attraction_gain  = self.attraction_gain
         self.base_repulsion_gain   = self.repulsion_gain
         self.repulsion_distance    = 2.0
@@ -79,7 +91,7 @@ class APFParams:
         self.dynamic_tuning        = True
         # Dynamic tuning range, relative to the configured gains.
         self.min_repulsion_gain    = self.base_repulsion_gain
-        self.max_repulsion_gain    = 2.0 * self.base_repulsion_gain
+        self.max_repulsion_gain    = 3.0 * self.base_repulsion_gain
         self.min_attraction_gain   = 0.5 * self.base_attraction_gain
         self.max_rep_force         = 3.0
         self.max_att_force         = 1.5
@@ -92,28 +104,50 @@ class APFParams:
         self.vz_min = rospy.get_param('~vz_min', -0.3)
 
 
-def laser_to_obstacles(scan_msg, robot_pos, robot_quat, scan_yaw_offset=0.0,
-                       max_rays=80, floor_z=0.15, lidar_height=-0.097):
+def rot_z(yaw):
+    c, s = np.cos(yaw), np.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+# Default lidar mount for hector's quadrotor_hokuyo_utm30lx (used only if TF
+# is unavailable): 0.097 m below base_link, upside down (roll = pi).
+DEFAULT_SCAN_R = np.diag([1.0, -1.0, -1.0])
+DEFAULT_SCAN_T = np.array([0.0, 0.0, -0.097])
+
+
+def scan_fov_in_body(scan_msg, R_bs):
+    """(centre, half_width) of the scan's horizontal field of view, expressed
+    as body-frame bearings (handles mirrored / rotated mounts)."""
+    mid = 0.5 * (scan_msg.angle_min + scan_msg.angle_max)
+    d = R_bs @ np.array([np.cos(mid), np.sin(mid), 0.0])
+    return float(np.arctan2(d[1], d[0])), 0.5 * (scan_msg.angle_max - scan_msg.angle_min)
+
+
+def laser_to_obstacles(scan_msg, robot_pos, robot_quat, R_bs=None, t_bs=None,
+                       max_rays=80, floor_z=0.15):
     """Project (down-sampled) scan returns into world-frame 3D points.
 
+    R_bs / t_bs: lidar frame -> base_link rotation and translation (from TF).
     Uses the full body orientation, so beams that hit the floor while the
     drone is pitched/rolled are recognised and dropped instead of becoming
     phantom obstacles.
     """
+    R_bs = DEFAULT_SCAN_R if R_bs is None else R_bs
+    t_bs = DEFAULT_SCAN_T if t_bs is None else t_bs
     r = np.asarray(scan_msg.ranges, dtype=float)
     n = len(r)
     if n == 0:
         return np.empty((0, 3))
     idx = np.arange(0, n, max(1, n // max_rays))
     r = r[idx]
-    ang = scan_msg.angle_min + idx * scan_msg.angle_increment + scan_yaw_offset
+    ang = scan_msg.angle_min + idx * scan_msg.angle_increment
     ok = np.isfinite(r) & (r > scan_msg.range_min) & (r < scan_msg.range_max - 0.1)
     r, ang = r[ok], ang[ok]
     if len(r) == 0:
         return np.empty((0, 3))
 
-    pts_body = np.column_stack([r * np.cos(ang), r * np.sin(ang),
-                                np.full(len(r), lidar_height)])
+    pts_scan = np.column_stack([r * np.cos(ang), r * np.sin(ang), np.zeros(len(r))])
+    pts_body = pts_scan @ R_bs.T + t_bs
     pts = robot_pos + pts_body @ quat_to_rot(robot_quat).T
     return pts[pts[:, 2] > floor_z]
 
@@ -121,9 +155,9 @@ def laser_to_obstacles(scan_msg, robot_pos, robot_quat, scan_yaw_offset=0.0,
 def wall_repulsion(robot_pos):
     F_wall = np.zeros(3)
 
-    def boundary_force(dist_to_wall, direction):
-        if 0 < dist_to_wall < WALL_INFLUENCE:
-            mag = WALL_GAIN * (1.0/dist_to_wall - 1.0/WALL_INFLUENCE) ** 2
+    def boundary_force(dist_to_wall, direction, influence=WALL_INFLUENCE, gain=WALL_GAIN):
+        if 0 < dist_to_wall < influence:
+            mag = gain * (1.0/dist_to_wall - 1.0/influence) ** 2
             return mag * direction
         return np.zeros(3)
 
@@ -134,7 +168,7 @@ def wall_repulsion(robot_pos):
     F_wall += boundary_force(H - x, np.array([-1, 0, 0]))
     F_wall += boundary_force(y + H, np.array([0, 1, 0]))
     F_wall += boundary_force(H - y, np.array([0, -1, 0]))
-    F_wall += boundary_force(z - 0.0, np.array([0, 0, 1]))
+    F_wall += boundary_force(z - 0.0, np.array([0, 0, 1]), FLOOR_INFLUENCE, FLOOR_GAIN)
 
     wn = np.linalg.norm(F_wall)
     if wn > 4.0:
@@ -249,11 +283,47 @@ def clearance_along(robot_pos, direction, obstacle_pts, lookahead=(0.5, 1.0, 1.5
     return float(np.min(d))
 
 
-def detect_local_minima(position_history, goal_dir, robot_pos=None, obstacle_pts=None):
+def path_clear(start, goal, obstacle_pts, half_width, max_len=6.0):
+    """True if no obstacle point lies in the corridor of +-half_width around
+    the straight xy segment start->goal (checked up to max_len metres)."""
+    seg = (np.asarray(goal) - np.asarray(start))[:2]
+    L = float(np.linalg.norm(seg))
+    if L < 1e-6 or len(obstacle_pts) == 0:
+        return True
+    u = seg / L
+    rel = obstacle_pts[:, :2] - np.asarray(start)[:2]
+    t = rel @ u
+    perp = np.abs(rel @ np.array([-u[1], u[0]]))
+    return not np.any((t > 0.0) & (t < min(L, max_len)) & (perp < half_width))
+
+
+def choose_escape_side(robot_pos, goal_pos, obstacle_pts, half_width,
+                       offsets=np.arange(0.5, 4.01, 0.25)):
+    """Pick the perpendicular side whose detour opens a clear line to the goal
+    soonest. Returns (unit direction (3,), detour length or inf)."""
+    g = (goal_pos - robot_pos)[:2]
+    n = np.linalg.norm(g)
+    perp = np.array([-g[1], g[0], 0.0]) / n if n > 1e-9 else np.array([1.0, 0.0, 0.0])
+    best_dir, best_cost = perp, np.inf
+    for d in (perp, -perp):
+        for s in offsets:
+            p = robot_pos + s * d
+            if not path_clear(robot_pos, p, obstacle_pts, 0.8 * half_width):
+                break                       # this side is walled off
+            if path_clear(p, goal_pos, obstacle_pts, half_width):
+                if s < best_cost:
+                    best_dir, best_cost = d, s
+                break
+    return best_dir, best_cost
+
+
+def detect_local_minima(position_history, goal_dir, robot_pos=None, obstacle_pts=None,
+                        half_width=0.8):
     """Return (stuck, escape_dir). Stuck = <0.15 m net progress in 2 s.
 
-    The escape direction is perpendicular to the goal direction, on whichever
-    side has more clearance (falls back to left when there is no scan data).
+    The escape direction is perpendicular to the goal direction, on the side
+    whose detour reaches a clear line to the goal soonest (falling back to the
+    side with more clearance, then to left when there is no scan data).
     """
     if len(position_history) < 20:
         return False, np.array([1.0, 0.0, 0.0])
@@ -270,7 +340,11 @@ def detect_local_minima(position_history, goal_dir, robot_pos=None, obstacle_pts
         perp /= np.linalg.norm(perp)
 
     if robot_pos is not None and obstacle_pts is not None and len(obstacle_pts) > 0:
-        if clearance_along(robot_pos, -perp, obstacle_pts) > clearance_along(robot_pos, perp, obstacle_pts):
+        side, cost = choose_escape_side(robot_pos, robot_pos + np.asarray(goal_dir),
+                                        obstacle_pts, half_width)
+        if np.isfinite(cost):
+            perp = side
+        elif clearance_along(robot_pos, -perp, obstacle_pts) > clearance_along(robot_pos, perp, obstacle_pts):
             perp = -perp
 
     esc = perp + np.array([0, 0, (np.random.rand() - 0.5) * 0.2])
@@ -278,17 +352,29 @@ def detect_local_minima(position_history, goal_dir, robot_pos=None, obstacle_pts
     return True, esc
 
 
-def lookup_scan_yaw_offset(scan_frame, base_frame, timeout=2.0):
-    """Yaw of the lidar frame relative to the body frame, from TF. None on failure."""
+def merge_scan_memory(point_sets, voxel=0.15):
+    """Union of recent world-frame scan points, thinned to one point per voxel
+    so that remembering several scans does not inflate the summed repulsion."""
+    sets = [p for p in point_sets if len(p)]
+    if not sets:
+        return np.empty((0, 3))
+    pts = np.vstack(sets)
+    if voxel <= 0:
+        return pts
+    _, idx = np.unique(np.round(pts / voxel).astype(np.int64), axis=0, return_index=True)
+    return pts[np.sort(idx)]
+
+
+def lookup_scan_transform(scan_frame, base_frame, timeout=2.0):
+    """(R, t) of the lidar frame in the body frame, from TF. None on failure."""
     try:
         import tf2_ros
         buf = tf2_ros.Buffer()
         listener = tf2_ros.TransformListener(buf)  # must stay referenced during lookup
         tr = buf.lookup_transform(base_frame, scan_frame, rospy.Time(0), rospy.Duration(timeout))
-        q = tr.transform.rotation
-        yaw = float(np.arctan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z)))
+        q, p = tr.transform.rotation, tr.transform.translation
         del listener
-        return yaw
+        return quat_to_rot((q.x, q.y, q.z, q.w)), np.array([p.x, p.y, p.z])
     except Exception as e:  # tf2 missing, frame missing, timeout...
         rospy.logwarn("APF: TF lookup %s -> %s failed (%s)", base_frame, scan_frame, e)
         return None
@@ -304,11 +390,22 @@ class APFNavigator:
         self.goal_tol_z   = rospy.get_param('~goal_tol_z',   0.4)
         self.scan_timeout = rospy.get_param('~scan_timeout', 1.0)
         self.wp_timeout   = rospy.get_param('~wp_timeout',   120.0)
-        self.max_escapes_per_wp = rospy.get_param('~max_escapes_per_wp', 4)
-        self.face_travel_direction = rospy.get_param('~face_travel_direction', True)
+        self.max_escapes_per_wp = rospy.get_param('~max_escapes_per_wp', 6)
+        # 'goal': face the current waypoint (default, stable); 'travel': face the
+        # commanded velocity (oscillates with a 270 deg lidar, because what the
+        # lidar sees changes as the drone turns); 'fixed': never yaw.
+        self.heading_mode = rospy.get_param('~heading_mode', 'goal')
+        # Scan points are remembered (world frame) for this long so obstacles do
+        # not vanish when they rotate into the lidar's blind sector.
+        self.obstacle_memory = rospy.get_param('~obstacle_memory', 3.0)
+        self.memory_voxel = rospy.get_param('~memory_voxel', 0.15)
+        self.scan_buffer = collections.deque()
         self.k_yaw        = rospy.get_param('~k_yaw', 1.5)
         self.fov_margin   = rospy.get_param('~fov_margin', np.radians(15.0))
         self.blind_speed  = rospy.get_param('~blind_speed', 0.1)
+        # Below this speed the travel direction is too noisy to steer by:
+        # no yaw command and no blind-sector limit.
+        self.yaw_min_speed = rospy.get_param('~yaw_min_speed', 0.1)
         self.base_frame   = rospy.get_param('~base_frame', 'base_link')
         # None => auto-detect from TF on first scan.
         self.scan_yaw_offset = rospy.get_param('~scan_yaw_offset', None)
@@ -339,7 +436,9 @@ class APFNavigator:
         self.obstacle_points = np.empty((0, 3))
         self.scan_received   = False
         self.scan_time       = None
-        self.scan_fov        = (-np.pi, np.pi)
+        self.scan_fov        = (0.0, np.pi)        # (centre, half-width), body frame
+        self.scan_R = None                         # lidar -> base_link rotation
+        self.scan_t = None
         self.vel_history = []
         self.pos_history = []
         self.MAX_HIST    = 30
@@ -347,6 +446,7 @@ class APFNavigator:
         self.escape_mode      = False
         self.escape_counter   = 0
         self.escape_direction = np.zeros(3)
+        self.escape_elapsed   = 0
         self.stuck_counter    = 0
         self.iteration        = 0
         self.wp_start_time    = None
@@ -415,18 +515,31 @@ class APFNavigator:
             self.pose_received = True
 
     def scan_cb(self, msg):
-        if self.scan_yaw_offset is None:
-            off = lookup_scan_yaw_offset(msg.header.frame_id, self.base_frame)
-            self.scan_yaw_offset = off if off is not None else 0.0
-            rospy.loginfo("APF: lidar yaw offset = %.1f deg (frame %s)",
-                          np.degrees(self.scan_yaw_offset), msg.header.frame_id)
+        if self.scan_R is None:
+            if self.scan_yaw_offset is not None:
+                # Manual override: upright lidar rotated by scan_yaw_offset.
+                self.scan_R, self.scan_t = rot_z(self.scan_yaw_offset), DEFAULT_SCAN_T.copy()
+            else:
+                tf = lookup_scan_transform(msg.header.frame_id, self.base_frame)
+                if tf is None:
+                    rospy.logwarn("APF: using default upside-down hector lidar mount")
+                    tf = (DEFAULT_SCAN_R, DEFAULT_SCAN_T)
+                self.scan_R, self.scan_t = tf
+            upside_down = self.scan_R[2, 2] < 0
+            rospy.loginfo("APF: lidar frame %s mount: %s, z offset %.3f m",
+                          msg.header.frame_id, "UPSIDE DOWN (scan mirrored)" if upside_down
+                          else "upright", self.scan_t[2])
         with self.lock:
             if not self.pose_received:
                 return
-            self.obstacle_points = laser_to_obstacles(
-                msg, self.robot_pos, self.robot_quat, self.scan_yaw_offset)
-            self.scan_fov = (msg.angle_min + self.scan_yaw_offset,
-                             msg.angle_max + self.scan_yaw_offset)
+            pts = laser_to_obstacles(msg, self.robot_pos, self.robot_quat, self.scan_R, self.scan_t)
+            now = rospy.Time.now()
+            self.scan_buffer.append((now, pts))
+            while self.scan_buffer and (now - self.scan_buffer[0][0]).to_sec() > self.obstacle_memory:
+                self.scan_buffer.popleft()
+            self.obstacle_points = merge_scan_memory([p for _, p in self.scan_buffer],
+                                                     self.memory_voxel)
+            self.scan_fov = scan_fov_in_body(msg, self.scan_R)
             self.scan_received = True
             self.scan_time = rospy.Time.now()
 
@@ -518,16 +631,30 @@ class APFNavigator:
                 rospy.logwarn("APF: Local minimum (iter %d, escape %d/%d). Orthogonal escape.",
                               self.iteration, self.stuck_counter, self.max_escapes_per_wp)
                 self.escape_mode      = True
-                self.escape_counter   = self.params.escape_duration
+                # Longer budget on every attempt (2x, 4x, ... escape_duration).
+                self.escape_counter   = 2 * self.params.escape_duration * self.stuck_counter
+                self.escape_elapsed   = 0
                 self.escape_direction = esc_dir
 
         if self.escape_mode:
-            total_force += self.params.escape_force_magnitude * self.escape_direction
+            # Weaken attraction so the goal does not pull the drone straight
+            # back into the trap; keep repulsion and altitude hold.
+            total_force = (0.3 * F_att + F_rep +
+                           np.array([0.0, 0.0, total_force[2]]) +
+                           self.params.escape_force_magnitude * self.escape_direction)
             tn = np.linalg.norm(total_force)
             if tn > self.params.max_force * 1.5:
                 total_force = total_force / tn * self.params.max_force * 1.5
             self.escape_counter -= 1
-            if self.escape_counter <= 0:
+            self.escape_elapsed += 1
+            # Stop once a straight line to the goal is clear (after a short
+            # minimum), or when the budget runs out.
+            # The corridor is wider than the robot plus margin so the drone is
+            # clear of the obstacle's repulsion zone, not just its surface.
+            line_clear = (self.escape_elapsed >= 15 and
+                          path_clear(robot_pos, goal_pos, obstacle_pts,
+                                     self.params.robot_radius + 0.7))
+            if self.escape_counter <= 0 or line_clear:
                 self.escape_mode = False
                 self.pos_history.clear()
                 self.vel_history.clear()
@@ -540,21 +667,27 @@ class APFNavigator:
         v_xy, vz = force_to_velocity(total_force, self.params)
         yaw_rate = 0.0
         speed = np.linalg.norm(v_xy)
-        if speed > 0.05:
-            travel = np.arctan2(v_xy[1], v_xy[0])
-            if self.face_travel_direction:
-                yaw_rate = float(np.clip(self.k_yaw * wrap_to_pi(travel - robot_yaw),
-                                         -self.params.w_max, self.params.w_max))
+        travel = np.arctan2(v_xy[1], v_xy[0])
+        target_heading = None
+        if self.heading_mode == 'goal' and np.linalg.norm((goal_pos - robot_pos)[:2]) > self.goal_tol_xy:
+            target_heading = np.arctan2(goal_pos[1] - robot_pos[1], goal_pos[0] - robot_pos[0])
+        elif self.heading_mode == 'travel' and speed > self.yaw_min_speed:
+            target_heading = travel
+        if target_heading is not None:
+            yaw_rate = float(np.clip(self.k_yaw * wrap_to_pi(target_heading - robot_yaw),
+                                     -self.params.w_max, self.params.w_max))
+
+        if speed > self.yaw_min_speed:
             # Direction of travel relative to the body; is it inside the lidar FOV?
             rel = wrap_to_pi(travel - robot_yaw)
-            lo, hi = scan_fov[0] + self.fov_margin, scan_fov[1] - self.fov_margin
-            full_circle = (scan_fov[1] - scan_fov[0]) >= 2 * np.pi - 0.05
-            if not full_circle and not (lo <= rel <= hi):
-                limit = 0.0 if self.face_travel_direction else self.blind_speed
-                if speed > limit:
-                    v_xy = v_xy / speed * limit
+            centre, half = scan_fov
+            full_circle = half >= np.pi - 0.03
+            if not full_circle and abs(wrap_to_pi(rel - centre)) > half - self.fov_margin:
+                # Only creep where the lidar cannot currently see; remembered
+                # points still provide repulsion there.
+                v_xy = v_xy / speed * min(speed, self.blind_speed)
                 rospy.logwarn_throttle(2.0, "APF: travel direction in lidar blind sector "
-                                       "- limiting speed to %.2f m/s", limit)
+                                       "- limiting speed to %.2f m/s", self.blind_speed)
 
         self._send_cmd(np.array([v_xy[0], v_xy[1], vz]), yaw_rate)
         self._publish_markers(robot_pos, goal_pos, total_force, F_att, F_rep, obstacle_pts)

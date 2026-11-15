@@ -7,8 +7,9 @@ stops / slides / backs off based on four lidar sectors.
 Fixes over the previous version:
 - The drone yaws toward the goal and only translates once roughly facing it,
   so the body-frame FRONT sector really is the direction of travel.
-- Lidar mounting yaw comes from TF (or ~scan_yaw_offset) instead of a
-  hard-coded +90 deg rotation.
+- Lidar mounting comes from TF (or ~scan_yaw_offset) instead of a hard-coded
+  +90 deg rotation. The hector Hokuyo is mounted upside down (roll = pi),
+  which mirrors the scan: LEFT and RIGHT were swapped before.
 - SLIDE_BACK checks the rear sector, and rotates in place instead of reversing
   when the lidar cannot see behind the drone (Hokuyo UTM-30LX = 270 deg).
 - Shared state is read under the lock; stale scans make the drone hover.
@@ -27,10 +28,27 @@ def wrap_to_pi(a):
     return np.arctan2(np.sin(a), np.cos(a))
 
 
-def sector_minima(scan, yaw_offset):
+# hector quadrotor_hokuyo_utm30lx mount (fallback if TF is unavailable):
+# upside down, i.e. roll = pi -> scan y axis points to the body's right.
+DEFAULT_SCAN_R = np.diag([1.0, -1.0, -1.0])
+
+
+def rot_z(yaw):
+    c, s = np.cos(yaw), np.sin(yaw)
+    return np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+
+
+def body_bearings(scan, R_bs):
+    """Body-frame bearing of every beam, honouring the lidar mount rotation."""
+    a = scan.angle_min + np.arange(len(scan.ranges)) * scan.angle_increment
+    d = np.column_stack([np.cos(a), np.sin(a), np.zeros(len(a))]) @ R_bs.T
+    return np.arctan2(d[:, 1], d[:, 0])
+
+
+def sector_minima(scan, R_bs):
     """Min range in FRONT/LEFT/RIGHT/BACK body sectors (99.0 = nothing seen)."""
     r = np.asarray(scan.ranges, dtype=float)
-    ang = wrap_to_pi(scan.angle_min + np.arange(len(r)) * scan.angle_increment + yaw_offset)
+    ang = body_bearings(scan, R_bs)
     ok = np.isfinite(r) & (r > scan.range_min) & (r < scan.range_max)
     r, ang = r[ok], ang[ok]
 
@@ -44,13 +62,13 @@ def sector_minima(scan, yaw_offset):
             m((ang > 3 * q) | (ang < -3 * q)))      # back
 
 
-def rear_is_visible(scan, yaw_offset):
-    """True if the scan covers the direction straight behind the body."""
-    fov = scan.angle_max - scan.angle_min
-    if fov >= 2 * np.pi - 0.05:
+def rear_is_visible(scan, R_bs):
+    """True if some beam points (nearly) straight behind the body."""
+    if scan.angle_max - scan.angle_min >= 2 * np.pi - 0.05:
         return True
-    behind = wrap_to_pi(np.pi - yaw_offset)          # body 180 deg in scan frame
-    return scan.angle_min <= behind <= scan.angle_max
+    ang = body_bearings(scan, R_bs)
+    tol = max(abs(scan.angle_increment) * 2, np.radians(2.0))
+    return bool(np.any(np.abs(wrap_to_pi(ang - np.pi)) < tol))
 
 
 class BulletproofNav:
@@ -77,10 +95,14 @@ class BulletproofNav:
 
         self.base_frame = rospy.get_param('~base_frame', 'base_link')
         self.scan_yaw_offset = rospy.get_param('~scan_yaw_offset', None)  # None => TF
+        self.scan_R = None
 
         # --- State ---
         self.pos = np.array([0.0, 0.0, 0.0])
         self.yaw = 0.0
+        # Resting height on the landing gear (~0.18 m for hector), taken from
+        # the first odometry message; "landed" = back within 10 cm of it.
+        self.ground_z = None
         self.last_scan = None
         self.last_scan_time = None
         self.mission_state = "TAKEOFF"
@@ -111,31 +133,41 @@ class BulletproofNav:
         with self.lock:
             p = msg.pose.pose.position
             self.pos = np.array([p.x, p.y, p.z])
+            if self.ground_z is None:
+                self.ground_z = p.z
             q = msg.pose.pose.orientation
             self.yaw = np.arctan2(2.0*(q.w*q.z + q.x*q.y), 1.0-2.0*(q.y*q.y + q.z*q.z))
 
     def scan_cb(self, msg):
-        if self.scan_yaw_offset is None:
-            self.scan_yaw_offset = self._lookup_yaw_offset(msg.header.frame_id)
-            rospy.loginfo("Lidar yaw offset = %.1f deg (frame %s)",
-                          np.degrees(self.scan_yaw_offset), msg.header.frame_id)
+        if self.scan_R is None:
+            if self.scan_yaw_offset is not None:
+                self.scan_R = rot_z(self.scan_yaw_offset)
+            else:
+                self.scan_R = self._lookup_mount(msg.header.frame_id)
+            rospy.loginfo("Lidar frame %s mount: %s", msg.header.frame_id,
+                          "UPSIDE DOWN (scan mirrored)" if self.scan_R[2, 2] < 0 else "upright")
         with self.lock:
             self.last_scan = msg
             self.last_scan_time = rospy.Time.now()
 
-    def _lookup_yaw_offset(self, scan_frame):
+    def _lookup_mount(self, scan_frame):
+        """Rotation lidar frame -> base_link from TF (default: hector mount)."""
         try:
             import tf2_ros
             buf = tf2_ros.Buffer()
             listener = tf2_ros.TransformListener(buf)  # keep referenced during lookup
             tr = buf.lookup_transform(self.base_frame, scan_frame, rospy.Time(0), rospy.Duration(2.0))
-            q = tr.transform.rotation
+            x, y, z, w = (tr.transform.rotation.x, tr.transform.rotation.y,
+                          tr.transform.rotation.z, tr.transform.rotation.w)
             del listener
-            return float(np.arctan2(2.0*(q.w*q.z + q.x*q.y), 1.0-2.0*(q.y*q.y + q.z*q.z)))
+            return np.array([
+                [1 - 2 * (y * y + z * z), 2 * (x * y - z * w),     2 * (x * z + y * w)],
+                [2 * (x * y + z * w),     1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                [2 * (x * z - y * w),     2 * (y * z + x * w),     1 - 2 * (x * x + y * y)]])
         except Exception as e:
-            rospy.logwarn("TF lookup %s -> %s failed (%s); assuming 0 lidar yaw offset",
+            rospy.logwarn("TF lookup %s -> %s failed (%s); assuming hector upside-down mount",
                           self.base_frame, scan_frame, e)
-            return 0.0
+            return DEFAULT_SCAN_R.copy()
 
     def trigger_stop(self, reason):
         self.nav_state = "STOPPED"
@@ -195,9 +227,8 @@ class BulletproofNav:
                     rate.sleep()
                     continue
 
-                offset = self.scan_yaw_offset or 0.0
-                min_f, min_l, min_r, min_b = sector_minima(scan, offset)
-                rear_ok = rear_is_visible(scan, offset)
+                min_f, min_l, min_r, min_b = sector_minima(scan, self.scan_R)
+                rear_ok = rear_is_visible(scan, self.scan_R)
 
                 v_world = np.array([0.0, 0.0])
                 v_body_x = 0.0
@@ -315,7 +346,8 @@ class BulletproofNav:
 
             elif self.mission_state == "LAND":
                 cmd.twist.linear.z = -0.5
-                if pos[2] < 0.1:
+                ground = self.ground_z if self.ground_z is not None else 0.0
+                if pos[2] < ground + 0.1:
                     if self.skipped:
                         rospy.logwarn(f"\n=== LANDED. Waypoints SKIPPED: {self.skipped} ===\n")
                     else:

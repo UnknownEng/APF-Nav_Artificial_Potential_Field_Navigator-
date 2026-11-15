@@ -42,6 +42,18 @@ point cloud on `/rtabmap/cloud_map`.
 
 ## Lidar orientation
 
-Both lidar nodes read the lidar's yaw relative to `base_link` from TF. If
-`rosrun my_room_world test.py` shows the scan is rotated relative to TF, set
-`~scan_yaw_offset` (radians) on the node instead.
+The hector quadrotor's Hokuyo is mounted **upside down** under the body
+(`rpy="pi 0 0"` in `quadrotor_hokuyo_utm30lx.urdf.xacro`), which mirrors the
+scan left/right. Both lidar nodes read the full lidar -> `base_link` transform
+from TF and log the detected mount at start-up ("UPSIDE DOWN (scan mirrored)").
+`~scan_yaw_offset` (radians) is only a manual override for an *upright* lidar.
+
+## APF navigator parameters (most useful)
+
+| Param | Default | Meaning |
+|---|---|---|
+| `heading_mode` | `goal` | `goal`: face the waypoint; `travel`: face the velocity; `fixed`: never yaw |
+| `repulsion_gain` | `1.0` | Open-space gain; ramps to 3x near obstacles |
+| `obstacle_memory` | `3.0` | Seconds scan points are remembered (covers the 90 deg blind sector) |
+| `wp_timeout` | `120` | Skip (and report) a waypoint after this many seconds |
+| `max_escapes_per_wp` | `6` | Skip (and report) a waypoint after this many escapes |
